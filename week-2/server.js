@@ -23,6 +23,16 @@ app.get('/tasks', (req, res) => {
   res.json(tasks);
 });
 
+app.post('/tasks', (req, res) => {
+  const { title } = req.body;
+  if (!title || typeof title !== 'string' || title.trim() === '') {
+    return res.status(400).json({ error: 'Title is required and must be a non-empty string' });
+  }
+  const task = { id: nextId++, title: title.trim(), done: false };
+  tasks.push(task);
+  res.status(201).json(task);
+});
+
 app.get('/tasks/:id', (req, res) => {
   const id = parseInt(req.params.id);
   const task = tasks.find(t => t.id === id);
