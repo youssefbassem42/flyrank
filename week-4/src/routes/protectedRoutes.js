@@ -1,21 +1,14 @@
 const express = require('express');
+const authenticate = require('../middleware/auth');
 
 const router = express.Router();
 
-router.get('/protected/profile', (req, res) => {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Access token required' });
-  }
-
-  const token = authHeader.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ error: 'Access token required' });
-  }
-
-  res.status(200).json({ message: 'Token received but not yet verified' });
+router.get('/protected/profile', authenticate, (req, res) => {
+  res.status(200).json({
+    id: req.user.id,
+    email: req.user.email,
+    created_at: req.user.created_at,
+  });
 });
 
 module.exports = router;
