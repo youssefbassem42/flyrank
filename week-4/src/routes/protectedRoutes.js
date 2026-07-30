@@ -11,4 +11,11 @@ router.get('/protected/profile', authenticate, (req, res) => {
   });
 });
 
+router.get('/protected/dashboard', authenticate, (req, res) => {
+  res.status(200).json({
+    message: `Welcome to your dashboard, ${req.user.email}`,
+    user_id: req.user.id,
+  });
+});
+
 module.exports = router;

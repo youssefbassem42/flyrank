@@ -1,5 +1,6 @@
 const express = require('express');
 const supabase = require('../supabaseClient');
+const authenticate = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -36,6 +37,28 @@ router.post('/auth/login', async (req, res) => {
     access_token: data.session.access_token,
     refresh_token: data.session.refresh_token,
   });
+});
+
+router.post('/auth/logout', authenticate, async (req, res) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader.split(' ')[1];
+
+  const { error: sessionError } = await supabase.auth.setSession({
+    access_token: token,
+    refresh_token: '',
+  });
+
+  if (sessionError) {
+    return res.status(400).json({ error: sessionError.message });
+  }
+
+  const { error: signOutError } = await supabase.auth.signOut();
+
+  if (signOutError) {
+    return res.status(400).json({ error: signOutError.message });
+  }
+
+  res.status(204).send();
 });
 
 module.exports = router;
