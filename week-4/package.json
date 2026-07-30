@@ -1,0 +1,16 @@
+{
+  "name": "week-4",
+  "version": "1.0.0",
+  "description": "Secure API with Supabase Auth",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "type": "commonjs",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.4",
+    "dotenv": "^16.4.7",
+    "express": "^5.2.1",
+    "swagger-ui-express": "^5.0.1"
+  }
+}
