@@ -1,0 +1,358 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Books Report Pipeline API",
+    "version": "1.0.0",
+    "description": "Generate a PDF report from the week-5 books corpus as a background job: POST /jobs answers 202 instantly, a worker aggregates the data with SQL, renders the PDF, stores it as an artifact, and your job result carries a download link (store and link, not pass-the-bytes). Stretch: recurring schedules auto-enqueue report jobs."
+  },
+  "servers": [
+    { "url": "http://localhost:3000", "description": "Local dev" }
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "API info",
+        "responses": {
+          "200": {
+            "description": "Returns API metadata",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "responses": {
+          "200": {
+            "description": "Server is alive",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "status": { "type": "string" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs": {
+      "get": {
+        "summary": "List jobs",
+        "description": "Optionally filter by status: queued, running, completed, failed",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["queued", "running", "completed", "failed"] }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of jobs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Job" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Submit a report job",
+        "description": "Responds instantly with 202 Accepted and a job id. A worker then runs the SQL aggregation and renders the PDF in the background; poll GET /jobs/{id} until completed, and download the PDF from result.artifact.download_url. Set the Idempotency-Key header (or idempotency_key in the body) to guarantee the same job is not enqueued twice.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": { "type": "string" },
+            "description": "Replaying the same key returns the existing job instead of creating a new one"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ReportJobRequest" }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted — job queued (or existing job returned for a replayed idempotency key)",
+            "headers": {
+              "Location": { "schema": { "type": "string" }, "description": "URL to poll for job status" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Job" }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs/{id}": {
+      "get": {
+        "summary": "Get job status and result",
+        "description": "status: queued -> running -> completed | failed. attempts counts every run (including retries). When completed, result carries the report summary and an artifact link — not the bytes.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job with current status",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Job" }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/artifacts/{id}": {
+      "get": {
+        "summary": "Download a report artifact",
+        "description": "Streams the stored PDF with Content-Disposition: attachment. The job result only ever carries this link.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The PDF file",
+            "content": {
+              "application/pdf": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "404": {
+            "description": "Artifact not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schedules": {
+      "get": {
+        "summary": "List recurring report schedules",
+        "responses": {
+          "200": {
+            "description": "Array of schedules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Schedule" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a recurring report schedule",
+        "description": "Stretch: the worker enqueues a report job every `every` seconds. last_enqueued_at shows when it last fired.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ScheduleRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Schedule created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Schedule" }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/alerts": {
+      "get": {
+        "summary": "List alerts",
+        "description": "Alerts are raised when a job exhausts its retries. Also written to stderr and optionally POSTed to ALERT_WEBHOOK_URL.",
+        "responses": {
+          "200": {
+            "description": "Array of alerts (newest first)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Alert" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ReportJobRequest": {
+        "type": "object",
+        "required": ["type", "payload"],
+        "properties": {
+          "type": { "type": "string", "enum": ["report"], "example": "report" },
+          "idempotency_key": { "type": "string", "description": "Alternative to the Idempotency-Key header" },
+          "payload": {
+            "type": "object",
+            "properties": {
+              "category": {
+                "type": "string",
+                "example": "Fiction",
+                "description": "Optional: scope the report to one category instead of all books"
+              },
+              "failOnce": { "type": "boolean", "description": "Demo retries: fail the first attempt, succeed on retry" },
+              "failAlways": { "type": "boolean", "description": "Demo alerts: always fail until max_attempts is exhausted" }
+            }
+          }
+        }
+      },
+      "ScheduleRequest": {
+        "type": "object",
+        "required": ["kind", "payload", "every"],
+        "properties": {
+          "kind": { "type": "string", "enum": ["report"], "example": "report" },
+          "every": {
+            "type": "integer",
+            "minimum": 1,
+            "example": 3600,
+            "description": "Interval in seconds between automatic report runs"
+          },
+          "payload": {
+            "type": "object",
+            "properties": {
+              "category": { "type": "string", "description": "Optional scope for the recurring report" }
+            }
+          }
+        }
+      },
+      "Schedule": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "kind": { "type": "string" },
+          "payload": { "type": "object" },
+          "every_seconds": { "type": "integer" },
+          "last_enqueued_at": { "type": "string", "nullable": true },
+          "created_at": { "type": "string" }
+        }
+      },
+      "Job": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "type": "string" },
+          "payload": { "type": "object" },
+          "idempotency_key": { "type": "string", "nullable": true },
+          "status": { "type": "string", "enum": ["queued", "running", "completed", "failed"] },
+          "attempts": { "type": "integer" },
+          "max_attempts": { "type": "integer" },
+          "progress": { "type": "integer", "description": "0-100 while running" },
+          "result": { "$ref": "#/components/schemas/ReportResult", "nullable": true, "description": "Set when completed" },
+          "error": { "type": "string", "nullable": true },
+          "created_at": { "type": "string" },
+          "started_at": { "type": "string", "nullable": true },
+          "finished_at": { "type": "string", "nullable": true },
+          "next_run_at": { "type": "string", "nullable": true, "description": "When a retry is due (backoff)" }
+        }
+      },
+      "ReportResult": {
+        "type": "object",
+        "properties": {
+          "scope": { "type": "string" },
+          "book_count": { "type": "integer" },
+          "category_count": { "type": "integer" },
+          "avg_price": { "type": "number" },
+          "avg_rating": { "type": "number" },
+          "generated_at": { "type": "string" },
+          "sections": { "type": "array", "items": { "type": "string" } },
+          "note": { "type": "string" },
+          "artifact": {
+            "type": "object",
+            "description": "Store and link: the file stays in the artifacts table, the result only carries this link",
+            "properties": {
+              "artifact_id": { "type": "string" },
+              "filename": { "type": "string" },
+              "mime_type": { "type": "string" },
+              "size_bytes": { "type": "integer" },
+              "download_url": { "type": "string", "example": "/artifacts/0f9c..." }
+            }
+          }
+        }
+      },
+      "Alert": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "job_id": { "type": "string" },
+          "message": { "type": "string" },
+          "created_at": { "type": "string" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" }
+        }
+      }
+    }
+  }
+}
