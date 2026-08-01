@@ -1,0 +1,15 @@
+{
+  "requests": 965,
+  "retries": 0,
+  "errors": [],
+  "robots_disallowed": 0,
+  "status_codes": {
+    "200": 965
+  },
+  "started_at": "2026-08-01T20:08:50+00:00",
+  "finished_at": "2026-08-01T20:29:53+00:00",
+  "robots_url": "https://books.toscrape.com/robots.txt",
+  "duration_s": 1263.5,
+  "books_scraped": 915,
+  "records_on_disk": 1000
+}
